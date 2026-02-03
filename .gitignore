@@ -1,0 +1,38 @@
+## Build output
+bin/
+obj/
+
+## Visual Studio / VS Code
+.vs/
+.vscode/
+
+## User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Rider
+.idea/
+
+## OS files
+.DS_Store
+Thumbs.db
+
+## Logs
+*.log
+
+## NuGet
+packages/
+*.nupkg
+
+## Test results
+TestResults/
+
+## Secrets / local settings
+appsettings.Development.json
+appsettings.Local.json
+
+## Coverage
+coverage/
+coverage.xml

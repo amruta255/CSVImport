@@ -23,23 +23,20 @@ internal static class Program
             return 1;
         }
 
-        var configConnectionString = TryReadConnectionString("appsettings.json");
-        var connectionStringPrompt = "SQL Server connection string" +
-                                     (string.IsNullOrWhiteSpace(configConnectionString)
-                                         ? string.Empty
-                                         : " (press Enter to use appsettings.json)");
-        var connectionString = Prompt(connectionStringPrompt,
-            "Server=.;Database=MyDb;Trusted_Connection=True;TrustServerCertificate=True;");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            connectionString = configConnectionString;
-        }
+        var connectionSettings = TryReadConnectionSettings("appsettings.json");
+        var serverName = PromptWithDefault("SQL Server name", "localhost", connectionSettings?.Server);
+        var databaseName = PromptWithDefault("Database name", "MyDb", connectionSettings?.Database);
+        var userName = PromptWithDefault("SQL username", "sa", connectionSettings?.User);
+        var password = PromptPassword("SQL password", connectionSettings?.Password);
 
-        if (string.IsNullOrWhiteSpace(connectionString))
+        if (string.IsNullOrWhiteSpace(serverName) || string.IsNullOrWhiteSpace(databaseName) ||
+            string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(password))
         {
-            Console.WriteLine("Error: Connection string is required (prompt or appsettings.json).");
+            Console.WriteLine("Error: Server, database, username, and password are required.");
             return 1;
         }
+
+        var connectionString = BuildConnectionString(serverName, databaseName, userName, password);
 
         var targetTableName = Prompt("Target table name (letters/numbers/underscore only)", "ImportedData");
         if (!SqlTableManager.IsValidSimpleIdentifier(targetTableName))
@@ -154,6 +151,31 @@ internal static class Program
         return Console.ReadLine()?.Trim() ?? string.Empty;
     }
 
+    private static string PromptWithDefault(string label, string example, string? defaultValue)
+    {
+        if (!string.IsNullOrWhiteSpace(defaultValue))
+        {
+            Console.Write($"{label} (default: {defaultValue}): ");
+            var input = Console.ReadLine()?.Trim();
+            return string.IsNullOrWhiteSpace(input) ? defaultValue : input;
+        }
+
+        return Prompt(label, example);
+    }
+
+    private static string PromptPassword(string label, string? defaultValue)
+    {
+        if (!string.IsNullOrWhiteSpace(defaultValue))
+        {
+            Console.Write($"{label} (press Enter to use stored value): ");
+            var input = Console.ReadLine();
+            return string.IsNullOrWhiteSpace(input) ? defaultValue : input.Trim();
+        }
+
+        Console.Write($"{label}: ");
+        return Console.ReadLine()?.Trim() ?? string.Empty;
+    }
+
     private static List<string> ParseColumnList(string input)
     {
         var results = new List<string>();
@@ -175,7 +197,7 @@ internal static class Program
         return results;
     }
 
-    private static string? TryReadConnectionString(string path)
+    private static ConnectionSettings? TryReadConnectionSettings(string path)
     {
         if (!File.Exists(path))
         {
@@ -186,17 +208,15 @@ internal static class Program
         {
             var json = File.ReadAllText(path);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("ConnectionStrings", out var csSection))
+            if (doc.RootElement.TryGetProperty("SqlConnection", out var section))
             {
-                if (csSection.TryGetProperty("DefaultConnection", out var defaultConn))
+                return new ConnectionSettings
                 {
-                    return defaultConn.GetString();
-                }
-            }
-
-            if (doc.RootElement.TryGetProperty("ConnectionString", out var conn))
-            {
-                return conn.GetString();
+                    Server = section.GetProperty("Server").GetString(),
+                    Database = section.GetProperty("Database").GetString(),
+                    User = section.GetProperty("User").GetString(),
+                    Password = section.GetProperty("Password").GetString()
+                };
             }
         }
         catch
@@ -205,5 +225,29 @@ internal static class Program
         }
 
         return null;
+    }
+
+    private static string BuildConnectionString(string server, string database, string user, string password)
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = server,
+            InitialCatalog = database,
+            UserID = user,
+            Password = password,
+            Encrypt = true,
+            TrustServerCertificate = true,
+            ConnectTimeout = 30
+        };
+
+        return builder.ConnectionString;
+    }
+
+    private sealed class ConnectionSettings
+    {
+        public string? Server { get; init; }
+        public string? Database { get; init; }
+        public string? User { get; init; }
+        public string? Password { get; init; }
     }
 }
